@@ -63,7 +63,7 @@ def str2b64(v):
 def b642str(v):
     #base64字串轉字串
     import base64
-    return base64.b64decode(v)
+    return base64.b64decode(v).decode('utf-8')
 
 
 def readText(fn):
@@ -92,10 +92,18 @@ def docx2html(fpIn, fpOut, opt):
     app.DisplayAlerts = False 
 
     docIn = None
+    prev_view_type = None
     try:
 
         # Open
         docIn = app.Documents.Open(fpIn)
+
+        # 記錄原本 View.Type
+        try:
+            aw = docIn.ActiveWindow
+            prev_view_type = aw.View.Type
+        except:
+            prev_view_type = None
 
         # rng
         rng = docIn.Range()
@@ -109,10 +117,18 @@ def docx2html(fpIn, fpOut, opt):
                 rng.Font.Grow()  
 
         # SaveAs2
-        WdSaveFormat = 10 # wdFormatFilteredHTML 或 wdFormatHTML
+        WdSaveFormat = 10 # wdFormatFilteredHTML
         docIn.SaveAs2(fpOut, WdSaveFormat)
 
+        # 轉完後恢復 View.Type
+        if prev_view_type is not None:
+            try:
+                docIn.ActiveWindow.View.Type = prev_view_type
+            except:
+                pass
+
     finally:
+
         # Close input doc & quit word
         try:
             if docIn is not None:
