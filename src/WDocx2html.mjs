@@ -5,7 +5,10 @@ import isestr from 'wsemi/src/isestr.mjs'
 import isp0int from 'wsemi/src/isp0int.mjs'
 import str2b64 from 'wsemi/src/str2b64.mjs'
 import execProcess from 'wsemi/src/execProcess.mjs'
+import getPathParent from 'wsemi/src/getPathParent.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
+import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
+import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
 
 
 let fdSrv = path.resolve()
@@ -79,6 +82,12 @@ async function WDocx2html(fpIn, fpOut, opt = {}) {
     //轉絕對路徑
     fpIn = path.resolve(fpIn)
     fpOut = path.resolve(fpOut)
+
+    //fdOut
+    let fdOut = getPathParent(fpOut)
+    if (!fsIsFolder(fdOut)) {
+        fsCreateFolder(fdOut)
+    }
 
     //fnExe
     let fnExe = `docx2html.exe`
