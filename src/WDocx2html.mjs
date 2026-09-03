@@ -9,9 +9,7 @@ import getPathParent from 'wsemi/src/getPathParent.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
-
-
-let fdSrv = path.resolve()
+import autoDownloadFiles from './autoDownloadFiles.mjs'
 
 
 function isWindows() {
@@ -89,28 +87,9 @@ async function WDocx2html(fpIn, fpOut, opt = {}) {
         fsCreateFolder(fdOut)
     }
 
-    //fnExe
-    let fnExe = `docx2html.exe`
-
-    //fdExe
-    let fdExe = ''
-    if (true) {
-        let fdExeSrc = `${fdSrv}/src/`
-        let fdExeNM = `${fdSrv}/node_modules/w-docx2html/src/`
-        if (fsIsFile(`${fdExeSrc}${fnExe}`)) {
-            fdExe = fdExeSrc
-        }
-        else if (fsIsFile(`${fdExeNM}${fnExe}`)) {
-            fdExe = fdExeNM
-        }
-        else {
-            return Promise.reject('can not find folder for html2docx')
-        }
-    }
-    // console.log('fdExe', fdExe)
-
-    //prog
-    let prog = `${fdExe}${fnExe}`
+    //prog, 自動定位docx2html.exe, 無檔案(安裝時npm封鎖scripts致postinstall未執行)則自動下載
+    let { fpExe } = await autoDownloadFiles()
+    let prog = fpExe
     // console.log('prog', prog)
 
     //inp
