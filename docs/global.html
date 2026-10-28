@@ -29,7 +29,7 @@
 <nav >
     
     
-    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDocx2html">WDocx2html</a></li><li><a href="global.html#autoDownloadFiles">autoDownloadFiles</a></li></ul>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#WDocx2html">WDocx2html</a></li><li><a href="global.html#autoDownloadFiles">autoDownloadFiles</a></li><li><a href="global.html#ensureBins">ensureBins</a></li></ul>
     
 </nav>
 
@@ -146,7 +146,7 @@
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="WDocx2html.mjs.html">WDocx2html.mjs</a>, <a href="WDocx2html.mjs.html#line56">line 56</a>
+        <a href="WDocx2html.mjs.html">WDocx2html.mjs</a>, <a href="WDocx2html.mjs.html#line60">line 60</a>
     </li></ul></dd>
     
 
@@ -465,17 +465,17 @@
 <dl class="details">
     
     <dt class="tag-description">Description:</dt>
-    <dd class="tag-description"><ul class="dummy"><li><p>自動定位docx2html.exe，若無檔案則自動下載，回傳docx2html.exe的絕對路徑</p>
-<p>依序偵測當前工作路徑的src/與node_modules/w-docx2html/src/，皆無docx2html.exe時，
-代表安裝時npm封鎖scripts致postinstall未執行，故自動調用downloadFiles重新下載</p>
-<p>供w-docx2html自身與其他依賴w-docx2html的套件調用，無須各自實作偵測與下載邏輯</p>
+    <dd class="tag-description"><ul class="dummy"><li><p>取得docx2html.exe，回傳docx2html.exe的絕對路徑</p>
+<p>相容層：本檔為舊版對外介面，內部改經ensureBins取得，依bin/manifest.json之SHA-256與大小校驗，
+首次使用時下載(或自鏡像取得)，之後自快取取得，不再偵測當前工作路徑之src/與node_modules/w-docx2html/src/，
+環境變數W_BIN_CACHE、W_BIN_MIRROR、W_BIN_OFFLINE見README〈外部執行檔〉</p>
 <p>因docx2html.exe只能用於Windows作業系統，故調用前須自行檢核作業系統</p></li></ul></dd>
     
 
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="autoDownloadFiles.mjs.html">autoDownloadFiles.mjs</a>, <a href="autoDownloadFiles.mjs.html#line43">line 43</a>
+        <a href="autoDownloadFiles.mjs.html">autoDownloadFiles.mjs</a>, <a href="autoDownloadFiles.mjs.html#line35">line 35</a>
     </li></ul></dd>
     
 
@@ -526,11 +526,11 @@
 
 async function test() {
 
-    //autoDownloadFiles, 無docx2html.exe時自動下載, 下載失敗則reject
+    //autoDownloadFiles, 取得docx2html.exe, 取得失敗則reject
     let { fpExe } = await autoDownloadFiles()
 
     console.log('fpExe', fpExe)
-    // fpExe D:\xxx\node_modules\w-docx2html\src\docx2html.exe
+    // fpExe D:\xxx\node_modules\w-docx2html\bin-cache\&lt;sha256>\docx2html.exe
 }
 test()
     .catch((err) => {
@@ -558,7 +558,205 @@ test()
 
         
 <div class="param-desc">
-    <p>回傳Promise，resolve回傳執行檔路徑物件，內含fpExe為docx2html.exe的絕對路徑字串，reject回傳錯誤訊息</p>
+    <p>回傳Promise，resolve回傳執行檔路徑物件，內含fpExe為docx2html.exe的絕對路徑字串，reject回傳帶code之Error(E_OFFLINE_MISSING等)</p>
+</div>
+
+
+
+<dl class="param-type">
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Promise</span>
+
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+        
+            
+
+    
+
+    <h4 class="name" id="ensureBins"><span class="type-signature"></span>ensureBins<span class="signature">(opt<span class="signature-attributes">opt</span>)</span><span class="type-signature"> &rarr; {Promise}</span></h4>
+
+    
+
+
+
+
+<dl class="details">
+    
+    <dt class="tag-description">Description:</dt>
+    <dd class="tag-description"><ul class="dummy"><li><p>取得本套件之外部執行檔docx2html.exe: 首次使用時下載(或自鏡像取得)並以bin/manifest.json之SHA-256與大小校驗, 之後自快取取得(亦校驗)</p>
+<p>規格: 外部執行檔之存放下載校驗與離線(制式規格)§6; 實作為wsemi之fsEnsureBins, 本套件不另寫下載、快取、鏡像、校驗
+環境變數: W_BIN_CACHE(共用快取資料夾)、W_BIN_MIRROR(鏡像, 本地資料夾或http(s)網址)、W_BIN_OFFLINE(1為離線), 見README〈外部執行檔〉</p></li></ul></dd>
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="ensureBins.mjs.html">ensureBins.mjs</a>, <a href="ensureBins.mjs.html#line36">line 36</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+    <h5 class="h5-examples">Example</h5>
+    
+    <pre class="prettyprint"><code>import ensureBins from 'w-docx2html/src/ensureBins.mjs'
+
+async function test() {
+
+    //部署前預先取得, 離線部署見README〈外部執行檔〉
+    let bins = await ensureBins()
+    console.log(bins['docx2html.exe'])
+    // => D:\xxx\node_modules\w-docx2html\bin-cache\&lt;sha256>\docx2html.exe
+
+}
+test()
+    .catch((err) => {
+        console.log('catch', err)
+    })</code></pre>
+
+
+
+
+    <h5 class="h5-parameters">Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+        <th>Attributes</th>
+        
+
+        
+        <th>Default</th>
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>opt</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Object</span>
+
+
+
+            
+            </td>
+
+            
+                <td class="attributes">
+                
+                    &lt;optional><br>
+                
+
+                
+
+                
+                </td>
+            
+
+            
+                <td class="default">
+                
+                    <code>{}</code>
+                
+                </td>
+            
+
+            <td class="description last"><p>輸入設定物件, 交wsemi之fsEnsureBins(names、cacheDir、mirror、offline、onProgress等), pkgRoot固定為本套件根</p></td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5 class="h5-returns">Returns:</h5>
+
+        
+<div class="param-desc">
+    <p>回傳Promise, resolve回傳{ [檔名]: 絕對路徑 }, reject回傳帶code之Error(E_OFFLINE_MISSING等)</p>
 </div>
 
 
@@ -600,7 +798,7 @@ test()
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Sun Oct 25 2026 22:56:15 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 4.0.5</a> on Wed Oct 28 2026 22:06:30 GMT+0800 (台北標準時間) using the <a href="https://github.com/clenemt/docdash">docdash</a> theme.
 </footer>
 
 <script>prettyPrint();</script>

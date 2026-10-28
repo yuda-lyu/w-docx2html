@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "pkg": "w-docx2html",
+  "mode": "pinned",
+  "repo": "yuda-lyu/w-docx2html",
+  "commit": "924a7a516ef2ac01b6566e866b13383a2e8bc2d3",
+  "files": [
+    {
+      "name": "docx2html.exe",
+      "path": "bin/docx2html.exe",
+      "sha256": "cc9bb43be9b98af388ac4dbddf8df0a377540a83ba92ebab4b288296201ed8f3",
+      "size": 11183560
+    }
+  ]
+}

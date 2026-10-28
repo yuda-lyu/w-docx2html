@@ -9,7 +9,11 @@ import getPathParent from 'wsemi/src/getPathParent.mjs'
 import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
-import autoDownloadFiles from './autoDownloadFiles.mjs'
+import ensureBins from './ensureBins.mjs'
+
+
+//fnExe, docx2html執行檔名稱(須與bin/manifest.json之name一致)
+let fnExe = 'docx2html.exe'
 
 
 function isWindows() {
@@ -87,9 +91,9 @@ async function WDocx2html(fpIn, fpOut, opt = {}) {
         fsCreateFolder(fdOut)
     }
 
-    //prog, 自動定位docx2html.exe, 無檔案(安裝時npm封鎖scripts致postinstall未執行)則自動下載
-    let { fpExe } = await autoDownloadFiles()
-    let prog = fpExe
+    //prog, 經ensureBins取得docx2html.exe: 依bin/manifest.json校驗, 首次使用時下載(或自鏡像取得), 之後自快取取得, 見README〈外部執行檔〉
+    let bins = await ensureBins({ names: fnExe })
+    let prog = bins[fnExe]
     // console.log('prog', prog)
 
     //inp
@@ -124,6 +128,10 @@ async function WDocx2html(fpIn, fpOut, opt = {}) {
 
     return 'ok'
 }
+
+
+//ensureBins, 供部署前預先取得外部執行檔(以靜態屬性匯出, 不加具名匯出以免改變UMD主檔之形狀)
+WDocx2html.ensureBins = ensureBins
 
 
 export default WDocx2html
