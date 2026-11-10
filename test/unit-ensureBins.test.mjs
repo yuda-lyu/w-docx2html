@@ -281,6 +281,23 @@ describe(`ensureBins`, function() {
         assert.strict.equal(err.message.includes(path.join(fdCache2, pkgName, sha256, name)), true, err.message)
     })
 
+    it(`should make WDocx2html reject a string "[E_OFFLINE_MISSING] ..." (not an Error object) when the executable is unavailable, like w-docx-split and w-html2docx (E3)`, async function() {
+        //WDocx2html之reject一律為字串(JSDoc @returns); ensureBins帶code之Error轉為`[code] message`, 同族套件同型
+        let fdCache3 = newDir('envcache')
+        let fdOut = newDir('out-off')
+        let fpOut = path.join(fdOut, 'docout.html')
+        let err = await withEnv({ W_BIN_CACHE: fdCache3, W_BIN_MIRROR: undefined, W_BIN_OFFLINE: '1' }, () => {
+            return catchErr(() => WDocx2html('./test/docin.docx', fpOut, {}))
+        })
+        assert.strict.equal(typeof err, 'string', String(err))
+        assert.strict.equal(err.startsWith('[E_OFFLINE_MISSING] '), true, err)
+        for (let s of [name, sha256, `${entry.size} bytes`, path.join(fdCache3, pkgName, sha256, name)]) {
+            assert.strict.equal(err.includes(s), true, `message should include [${s}]: ${err}`)
+        }
+        assert.strict.equal(fs.existsSync(fpOut), false)
+        assert.strict.equal(hits.length, 0)
+    })
+
     it(`should place the default cache under the package root even when the module is loaded from another working directory (D3)`, function() {
         //pkgRoot於模組載入時決定, 故以子行程於他處工作目錄載入(被安裝為相依套件時, 載入時之工作目錄為使用者專案而非套件根)
         let env = { ...process.env }

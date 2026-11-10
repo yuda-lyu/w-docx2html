@@ -10,6 +10,7 @@ import fsIsFile from 'wsemi/src/fsIsFile.mjs'
 import fsIsFolder from 'wsemi/src/fsIsFolder.mjs'
 import fsCreateFolder from 'wsemi/src/fsCreateFolder.mjs'
 import ensureBins from './ensureBins.mjs'
+import judgeConvertOutput, { judgeConvertFile } from './judgeConvertOutput.mjs'
 
 
 //fnExe, docx2html執行檔名稱(須與bin/manifest.json之name一致)
@@ -22,13 +23,13 @@ function isWindows() {
 
 
 /**
- * 依照指定字串分割Docx檔
+ * 以Microsoft Word將Docx檔轉為Html檔
  *
- * @param {String} fpIn 輸入來源Html檔位置字串
- * @param {String} fpOut 輸入轉出Docx檔位置字串
+ * @param {String} fpIn 輸入來源Docx檔位置字串
+ * @param {String} fpOut 輸入轉出Html檔位置字串
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Integer} [opt.execFontGrow=0] 輸入全文件放大字型次數整數，預設0
- * @returns {Promise} 回傳Promise，resolve回傳成功訊息，reject回傳錯誤訊息
+ * @returns {Promise} 回傳Promise，resolve回傳成功訊息'ok'，reject回傳錯誤訊息。reject值有下列型態：參數檢測失敗為說明字串；取不到執行檔為`[code] 訊息`字串(code取自ensureBins，如`[E_OFFLINE_MISSING] ...`)；docx2html.exe無法執行或離開碼非0為execProcess之訊息字串(如`code[N]:\n...`)；docx2html.exe執行後自報失敗(如輸入非docx、docx損毀、Word無法開啟或無法另存)為`[E_CONVERT_FAILED] 原因`，原因為exe輸出之診斷(已依系統字碼頁解碼，不回顯輸入與輸出路徑，但Word之診斷可能自行含檔名)；exe報成功而fpOut未產生或為空檔(如fpOut無副檔名，Word另存為`<fpOut>.htm`)亦為`[E_CONVERT_FAILED] output file was not generated or is empty`。docx2html.exe不論成敗離開碼皆為0，故以其輸出判定成敗：須有`success`行且無`error:`行才resolve，空輸出或未知輸出亦視為失敗；失敗(reject)時fpOut之內容不可採用，本套件不刪除fpOut既有之舊檔
  * @example
  *
  * import w from 'wsemi'
@@ -92,8 +93,19 @@ async function WDocx2html(fpIn, fpOut, opt = {}) {
     }
 
     //prog, 經ensureBins取得docx2html.exe: 依bin/manifest.json校驗, 首次使用時下載(或自鏡像取得), 之後自快取取得, 見README〈外部執行檔〉
-    let bins = await ensureBins({ names: fnExe })
-    let prog = bins[fnExe]
+    //本函數以字串reject(同w-docx-split、w-html2docx), 故將ensureBins帶code之Error轉為`[code] message`
+    let prog = ''
+    let errBin = null
+    await ensureBins({ names: fnExe })
+        .then((r) => {
+            prog = r[fnExe]
+        })
+        .catch((err) => {
+            errBin = `${isestr(get(err, 'code')) ? `[${err.code}] ` : ''}${isestr(get(err, 'message')) ? err.message : String(err)}`
+        })
+    if (errBin) {
+        return Promise.reject(errBin)
+    }
     // console.log('prog', prog)
 
     //inp
@@ -109,8 +121,12 @@ async function WDocx2html(fpIn, fpOut, opt = {}) {
     let b64Input = str2b64(cInput)
     // console.log('b64Input', b64Input)
 
-    //execProcess
-    await execProcess(prog, b64Input)
+    //execProcess, docx2html.exe以ANSI字碼頁輸出(中文系統為big5), 故codeCmd給auto使失敗訊息不亂碼
+    let output = ''
+    await execProcess(prog, b64Input, { codeCmd: 'auto' })
+        .then((r) => {
+            output = r
+        })
         .catch((err) => {
             console.log('execProcess catch', err)
             errTemp = err.toString()
@@ -121,10 +137,17 @@ async function WDocx2html(fpIn, fpOut, opt = {}) {
         return Promise.reject(errTemp)
     }
 
-    // //check
-    // if (!isestr(output)) {
-    //     return Promise.reject(`output[${cstr(output)}] is not an effective string`)
-    // }
+    //check, docx2html.exe內部失敗時只於stdout印出`error: ...`且離開碼為0, execProcess不會reject, 故須依輸出判定
+    let j = judgeConvertOutput(output)
+    if (!j.ok) {
+        return Promise.reject(j.msg)
+    }
+
+    //check, exe報成功後另驗fpOut存在且非空(例: fpOut無副檔名時Word另存為<fpOut>.htm, exe仍報success)
+    let jf = judgeConvertFile(fpOut)
+    if (!jf.ok) {
+        return Promise.reject(jf.msg)
+    }
 
     return 'ok'
 }

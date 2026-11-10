@@ -7,6 +7,7 @@
 | 規則 | 內容 |
 |---|---|
 | R-BIN-DOCX2HTML-01 | 外部執行檔 `docx2html.exe` 之存放、取得、校驗與離線(B 類,釘選模式) |
+| R-CONVERT-RESULT-01 | `WDocx2html()` 依 `docx2html.exe` 之輸出判定成敗(exe 不論成敗離開碼皆 0),並於判成功後另驗輸出檔 |
 | R-WORD | 轉檔器須自行建立 Word 實例、只結束自己者、輸入檔唯讀開啟(R-WORD-01~05) |
 | R-TEST | 測試:需實際 `docx2html.exe` 之功能測試、〈Word instance isolation〉 |
 
@@ -25,6 +26,23 @@
 - 站點全集與判準: 外部執行檔 1 個(`docx2html.exe`,自有檔);取得站點 1 個(`src/WDocx2html.mjs` 之 `ensureBins`,以及相容層 `src/autoDownloadFiles.mjs`);下載站點 0 個(下載只在 wsemi `fsEnsureBins` 內).
 - 測試: `test/unit-binManifest.test.mjs`(M1/M2/M4、T1、T2、S2 舊版相容)、`test/unit-ensureBins.test.mjs`(T3~T7、環境變數、pkgRoot 與載入時之工作目錄無關〔子行程工具 `test/tools/ensureBinsChild.mjs`〕、不轉傳 `floatingManifestUrl`、`WDocx2html.ensureBins` 與相容層;本機 HTTP `127.0.0.1:8951`、本地資料夾鏡像、不連外網;T8 為主幹模式專屬,不適用)、`test/WDocx2html.test.mjs`(功能測試,以本機鏡像供檔並斷言執行檔取自校驗後之快取).夾具 `test/_tmp/ensureBins/`、`test/_tmp/binManifest/`、`test/_tmp/WDocx2html/`,測試自行刪除.
 - 變更紀錄: 2026-10-28 改造(主控任務 20261028054319,bin-docx2html);2026-11-10 換版為 Word 實例隔離之轉檔器(R-WORD,主控排程第 408 項;`bin/` 與 `src/` 兩處同步,清單待重產).
+
+## R-CONVERT-RESULT-01 `WDocx2html()` 依 `docx2html.exe` 之輸出判定成敗,判成功後另驗輸出檔
+
+- 依據: 主控排程第 410 項(2026-11-11,任務 20261111025353,dx410;主控盤查同形:w-docx-split 已依輸出判定、w-html2docx 之 exe 失敗離開碼為 1 且另驗輸出檔、w-md2docx 驗輸出檔,本套件原為唯一「轉換失敗仍回成功」者);範本為 w-docx-split 之 `sgud/rule/rulebook.md`〈R-SPLIT-RESULT-01〉;輸入參數規格 `C:\opensrcOper\dspec\輸入參數之檢測機制.md` §5.1(Promise 者 reject、不同步 throw)、§6 V20(不回顯輸入值).
+- 成因與事實: `srcPython/docx2html.py` 之 `core()` 以 `except:` 吞掉所有例外,`run()` 只 `print(state)`(成功為 `success`,失敗為 `error: <訊息>`),不論成敗離開碼皆為 0,故 `execProcess` 不 reject;改前 JS 端不檢查輸出(原 output 檢查已註解掉),失敗時仍回 `'ok'`,`fpOut` 已有舊檔者呼叫端還會讀到舊內容.exe 以 ANSI 字碼頁(中文系統為 big5)輸出.實測(Word 16.0):非 docx、損毀 docx 皆為 `error: (-2147352567, …, '檔案似乎已毀損。', …, -2146822496)`;`fpOut` 無副檔名時 Word 另存為 `<fpOut>.htm`、exe 仍報 `success`.
+- 單一擁有者: `src/judgeConvertOutput.mjs`(預設匯出 `judgeConvertOutput(out)`:純函數,回 `{ ok, msg }`;具名匯出 `judgeConvertFile(fp)`:驗輸出檔,回 `{ ok, msg }`;失敗碼與訊息格式僅在此檔);`src/WDocx2html.mjs` 呼叫之.
+- 規則:
+  1. **依輸出判定,fail-closed**: 任一行(trim 後)以 `error:` 開頭 → 失敗(即使同時有 `success` 行),取首個;無 `error:` 行時須有整行為 `success` 之行才成功;空輸出、未知輸出、非字串一律失敗.stderr 之 `Word instance is kept since …`(R-WORD-02,不以 `error:` 起首)與 stdout 合併後仍判成功.不得改回只看離開碼.
+  2. **失敗通道**(規格 §5.1): reject 字串 `[E_CONVERT_FAILED] 原因`(本套件參數檢測與 exe 層之失敗本即為字串 reject,依 `[code] message` 之呈現);原因取自 exe 之 `error:` 行(無原因時為固定說明 `docx2html.exe reported an error`);無 `error:` 行而判失敗時為固定說明 `docx2html.exe returned no success result`,**不回顯其餘輸出**(規格 V20).Word 之診斷可能自行含檔名,不改寫.不同步 throw.
+  3. **解碼**: `execProcess(prog, b64Input, { codeCmd: 'auto' })`,使 big5 之失敗訊息不亂碼.
+  4. **判成功後另驗輸出檔**: `judgeConvertFile(fpOut)` 須為存在、為檔案且大小 > 0,否則同碼 reject 固定說明 `[E_CONVERT_FAILED] output file was not generated or is empty`(不回顯路徑).`fpOut` 無副檔名而 Word 另存為 `<fpOut>.htm` 者,改前回 `'ok'`、現為 reject(呼叫端應給 `.html`/`.htm` 副檔名).
+  5. **不動之範圍**: 轉換成功時之輸出內容與 resolve 值 `'ok'`、函式參數、`execProcess` 離開碼非 0 或逾時之既有 reject 型態(`code[N]:\n…`)、參數檢測之既有訊息(`fpIn[…] does not exist` 等,有回顯輸入值,與規格 V20 不合,範圍外未改)皆不變;不刪除也不改寫 `fpOut` 既有之舊檔(reject 時其內容不可採用);exe 未重建(離開碼仍為 0,輸出判定須保留,因舊版 exe 仍可能被釘選).
+- 盤點指令: Grep `execProcess\(` 於 `src/`、`toolg/`、`g.mjs`(exe 呼叫點全集應只有 `src/WDocx2html.mjs` 一處,且其後接 `judgeConvertOutput` 與 `judgeConvertFile`).
+- 站點全集與判準: exe 呼叫點 1 個(`src/WDocx2html.mjs`,已套);`src/autoDownloadFiles.mjs`、`src/ensureBins.mjs` 只取得路徑、不執行(不適用);`toolg/genBinManifest.mjs` 不執行 exe(不適用).
+- 測試: `test/unit-judgeConvertOutput.test.mjs`(`judgeConvertOutput` 13 案: 成功行、夾雜 stderr 提示、僅行首 `error:` 計入、`error:` 含診斷與空原因、invalid argv、error 優先、取首個、stderr 提示在 error 前、空輸出、未知輸出不回顯、整行比對、非字串不拋錯;`judgeConvertFile` 5 案: 非空檔、缺檔不回顯路徑、空檔、資料夾、非字串路徑;不需 Word)、`test/WDocx2html.test.mjs` 之 describe「WDocx2html when docx2html.exe fails internally」(真 Word 6 案: 非 docx、損毀 docx 各含/不含 `fpOut` 舊檔,須 reject `[E_CONVERT_FAILED]`、訊息無亂碼、不含輸入與輸出路徑、不殘留 WINWORD、無可見視窗;exe 報 success 而 `fpOut` 未產生〔無副檔名〕須 reject;其後正常 docx 仍 resolve `ok` 且輸出等於 `test/docoutTrue.html`;需本機有 Word 且無其他 WINWORD,有則整組略過).
+- 取不到執行檔: `ensureBins()` 帶 `code` 之 Error 轉為字串 `[code] message` 再 reject(同 w-docx-split、w-html2docx;本函數之 reject 一律為字串).測試 `test/unit-ensureBins.test.mjs`〈should make WDocx2html reject a string "[E_OFFLINE_MISSING] ..."〉.
+- 變更紀錄: 2026-11-11 新增(主控排程第 410 項,dx410);同日主控裁示 dx410 需裁示 1 為統一字串(原為 Error 物件),需裁示 2 維持(無副檔名之 `fpOut` 改為 reject).
 
 ## R-WORD Word 實例須自行建立、只結束自己者
 
@@ -55,5 +73,6 @@ git grep -n "Documents.Open(" -- srcPython
 
 - 需實際 `docx2html.exe` 之功能測試(`test/WDocx2html.test.mjs`)以本機鏡像供檔(不連外網):`convert` 案內嵌鏡像設定;〈Word instance isolation〉以 `test/tools/binEnv.mjs` 之 `setBinEnv`.
 - 〈Word instance isolation〉(6 案:①③②a②b④⑤)須在**無其他 WINWORD**時執行(有則整組略過並印出原因:修前之轉檔器會借用並結束之,且④無法確定連上本行程之實例);略過或初始化前失敗時 `after` 不結束任何 WINWORD.收尾以 `killNewAutomationWords` 只結束本組新出現之自動化 Word;有強制結束者(含可見視窗監看所結束者)再以 `clearDisabledItems` 清除指向 repo 內檔案之 Word 停用項目——強制結束開著文件之 Word 後,Word 將該文件列入 `HKCU\Software\Microsoft\Office\16.0\Word\Resiliency\DisabledItems`,之後開該檔即跳出可見訊息框而停住(實測).測試是否可自動刪除使用者登錄中指向 repo 之停用項目,待主控裁示(範本 hd408 報告〈需裁示〉).
-- 〈Word instance isolation〉與 `convert` 同檔:mocha `--parallel` 下不同檔會同時用 Word.
-- 改動範圍 → 測試:改 `srcPython/docx2html.py` → 重建 exe 並同步兩處 → 清單同步後跑 `WDocx2html.test`(`convert` 與〈Word instance isolation〉)與 `unit-binManifest`;本套件無瀏覽器 e2e.
+- 〈WDocx2html when docx2html.exe fails internally〉(6 案,R-CONVERT-RESULT-01)同樣須在**無其他 WINWORD** 時執行(有則整組略過並印出原因);開檔失敗案先起可見視窗看門狗,`after` 同〈Word instance isolation〉收尾(只結束本組新出現之自動化 Word,有強制結束者再清除指向 repo 內檔案之 Word 停用項目).
+- 〈Word instance isolation〉、〈… fails internally〉與 `convert` 同檔:mocha `--parallel` 下不同檔會同時用 Word.
+- 改動範圍 → 測試:改 `srcPython/docx2html.py` → 重建 exe 並同步兩處 → 清單同步後跑 `WDocx2html.test`(`convert`、〈Word instance isolation〉與〈fails internally〉)與 `unit-binManifest`;改 `src/judgeConvertOutput.mjs` 或 `src/WDocx2html.mjs` 之判定 → 跑 `unit-judgeConvertOutput` 與 `WDocx2html.test` 之〈fails internally〉;本套件無瀏覽器 e2e.

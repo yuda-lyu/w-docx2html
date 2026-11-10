@@ -439,3 +439,187 @@ describe('WDocx2html Word instance isolation', function() {
     })
 
 })
+
+
+describe('WDocx2html when docx2html.exe fails internally', function() {
+
+    //check
+    if (!isWindows()) {
+        return
+    }
+
+    //規格(R-CONVERT-RESULT-01, 主控排程第410項): docx2html.exe轉換失敗時只於標準輸出印出`error: <原因>`且離開碼為0, WDocx2html不得因此resolve'ok'
+    //  ①非docx、損毀docx: reject字串`[E_CONVERT_FAILED] 原因`(原因為exe之診斷, 已依系統字碼頁解碼無亂碼, 不回顯輸入與輸出路徑), 不產生輸出檔;
+    //  ②fpOut已有舊檔時同樣reject(呼叫端不得讀到舊檔而不自知); ③exe報success而fpOut未產生(無副檔名之fpOut, Word實寫`<fpOut>.htm`)亦reject; ④失敗之後正常docx仍resolve'ok'且輸出與docoutTrue.html相同
+    //  失敗案開檔失敗之Word可能被列入停用項目或跳可見訊息框: 先起可見視窗看門狗, 結束後清除指向本套件之停用項目; 本組須在無其他Word時執行(見before)
+
+    let prefix = '[E_CONVERT_FAILED] '
+    let staleText = 'STALE-OLD-CONTENT-OF-A-PREVIOUS-RUN'
+    let fdTmp = path.resolve('./test/_tmp/WDocx2html-fail')
+    let fdIn = path.join(fdTmp, 'in')
+    let fdOut = path.join(fdTmp, 'out')
+
+    //pre, 本組開始時已存在之WINWORD(須為空); null為本組未執行(略過或初始化前失敗), 此時after不結束任何WINWORD
+    let pre = null
+    let restoreBinEnv = null
+    let watch = null
+
+    let newPids = () => {
+        return wordPids().filter((v) => !pre.includes(v))
+    }
+
+    //conv, 以WDocx2html轉檔, 回傳{ r, err }(r為resolve值, err為reject值, 未發生者為null)
+    let conv = async (fpIn, fpOut, opt = {}) => {
+        let r = null
+        let err = null
+        await WDocx2html(fpIn, fpOut, opt)
+            .then((v) => {
+                r = v
+            })
+            .catch((e) => {
+                err = e
+            })
+        return { r, err }
+    }
+
+    //assertRejected, 規格①: 不得resolve, 以字串reject`[E_CONVERT_FAILED] 原因`, 原因非空、無亂碼(U+FFFD)、不回顯輸入與輸出路徑
+    let assertRejected = (rv, fpIn, fpOut) => {
+        assert.strict.equal(rv.r, null, `resolved [${rv.r}]`)
+        assert.strict.equal(typeof rv.err, 'string', String(rv.err))
+        assert.strict.equal(rv.err.startsWith(prefix), true, rv.err)
+        assert.strict.equal(rv.err.length > prefix.length, true, rv.err)
+        assert.strict.equal(rv.err.includes('�'), false, rv.err)
+        for (let fp of [fpIn, fpOut]) {
+            assert.strict.equal(rv.err.includes(fp), false, rv.err)
+            assert.strict.equal(rv.err.includes(fp.replace(/\\/g, '/')), false, rv.err)
+        }
+    }
+
+    before(async function() {
+        this.timeout(120000)
+
+        //前一組之轉檔器所開之Word可能仍在結束中
+        await waitWordGone(wordPids().filter(isAutomationWord), 30000)
+
+        //有其他Word(含使用者開啟者)時不跑本組: 以「本組新出現之WINWORD」判定不殘留, 他人於期間另起者無法區分
+        let pids = wordPids()
+        if (pids.length > 0) {
+            console.log(`skip [when docx2html.exe fails internally]: other WINWORD is running(${pids.join(',')})`)
+            this.skip()
+        }
+        pre = pids
+
+        restoreBinEnv = setBinEnv('WDocx2html-fail-bin')
+
+        fs.rmSync(fdTmp, { recursive: true, force: true })
+        fs.mkdirSync(fdIn, { recursive: true })
+        fs.mkdirSync(fdOut, { recursive: true })
+
+        //先前被強制結束之Word所留下、指向本套件檔案之停用項目, 會使開檔跳出可見訊息框而停住, 先清除
+        let rd = clearDisabledItems(path.resolve('.'))
+        if (rd.removed.length > 0 || rd.failed.length > 0) {
+            console.log(`Word disabled items under this package: ${JSON.stringify(rd)}`)
+        }
+
+        //非docx: 副檔名為docx之純文字檔; 損毀docx: 正常docx只取前一半(zip結尾遺失)
+        fs.writeFileSync(path.join(fdIn, 'notdocx.docx'), 'this is plain text, not a docx')
+        let buf = fs.readFileSync('./test/docin.docx')
+        fs.writeFileSync(path.join(fdIn, 'broken.docx'), buf.subarray(0, Math.floor(buf.length / 2)))
+
+        watch = await startVisibleWordWatch(path.join(fdTmp, 'watch.stop'))
+    })
+
+    after(async function() {
+        this.timeout(60000)
+
+        //nKilledByWatch, 監看結束之可見視窗所屬Word數(被強制結束者亦會留下停用項目)
+        let nKilledByWatch = 0
+        if (watch) {
+            await watch.stop()
+            nKilledByWatch = watch.lines.filter((v) => /^KILLED/.test(v)).length
+        }
+
+        //收尾: 只結束本組新出現且經COM自動化啟動之WINWORD(各案已斷言不殘留, 此處為失敗時之清理); 有強制結束者(含監看所結束者)再清其可能留下之停用項目
+        if (pre !== null) {
+            let rk = await killNewAutomationWords(pre)
+            if (rk.killed.length > 0 || nKilledByWatch > 0) {
+                let rd = clearDisabledItems(path.resolve('.'))
+                console.log(`cleanup: killed WINWORD ${JSON.stringify(rk)}, Word disabled items ${JSON.stringify(rd)}`)
+            }
+        }
+        if (restoreBinEnv) {
+            restoreBinEnv()
+        }
+        fs.rmSync(fdTmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 })
+        try {
+            fs.rmdirSync(path.resolve('./test/_tmp')) //尚有其他測試之暫存時非空, 略過
+        }
+        catch (err) {}
+    })
+
+    for (let name of ['notdocx.docx', 'broken.docx']) {
+
+        for (let stale of [false, true]) {
+
+            it(`rejects a string "[E_CONVERT_FAILED] ..." instead of resolving "ok" for ${name}${stale ? ' even if an old file already exists at fpOut' : ''}, writes no new output, does not echo the paths and leaves no WINWORD`, async function() {
+                this.timeout(180000)
+                let iw = watch.lines.length
+                let fpBad = path.resolve(path.join(fdIn, name))
+                let fpOut = path.resolve(path.join(fdOut, `${name}${stale ? '-stale' : ''}.html`))
+                if (stale) {
+                    fs.writeFileSync(fpOut, staleText)
+                }
+                let rv = await conv(fpBad, fpOut, { execFontGrow: 0 })
+
+                //規格①②: 轉換失敗(含fpOut已有舊檔)不得被當成功
+                assertRejected(rv, fpBad, fpOut)
+
+                //規格①: 失敗不產生輸出檔(fpOut已有舊檔者不被改寫為轉換結果, 亦即呼叫端不會得到新輸出)
+                if (stale) {
+                    assert.strict.equal(fs.readFileSync(fpOut, 'utf8'), staleText)
+                }
+                else {
+                    assert.strict.equal(fs.existsSync(fpOut), false)
+                }
+
+                //規格: 轉檔器所開之Word已結束且不開可見視窗
+                assert.strict.deepEqual([], await waitWordGone(newPids()))
+                assert.strict.deepEqual([], await watch.visibleSince(iw))
+            })
+
+        }
+
+    }
+
+    it('rejects "[E_CONVERT_FAILED] ..." when the exe reports success but no file is generated at fpOut (an extension-less fpOut: Word actually writes "<fpOut>.htm")', async function() {
+        this.timeout(180000)
+        let iw = watch.lines.length
+        let fpIn = path.resolve('./test/docin.docx')
+        let fpOut = path.resolve(path.join(fdOut, 'noext'))
+        let rv = await conv(fpIn, fpOut, { execFontGrow: 0 })
+
+        //前提: 轉檔器本身成功(Word另存為<fpOut>.htm, 內容有效), 故本案驗的是成功判定後的輸出檔驗證
+        assert.strict.equal(fs.existsSync(`${fpOut}.htm`) && fs.statSync(`${fpOut}.htm`).size > 0, true)
+
+        //規格③: fpOut未產生即不得resolve'ok'
+        assertRejected(rv, fpIn, fpOut)
+        assert.strict.equal(rv.err.includes('output file was not generated or is empty'), true, rv.err)
+        assert.strict.equal(fs.existsSync(fpOut), false)
+        assert.strict.deepEqual([], await waitWordGone(newPids()))
+        assert.strict.deepEqual([], await watch.visibleSince(iw))
+    })
+
+    it('still resolves "ok" with the same output as test/docoutTrue.html for a valid docx after the failures (the failure judgement does not break the success path)', async function() {
+        this.timeout(180000)
+        let iw = watch.lines.length
+        let fpOut = path.join(fdOut, 'after-failures.html')
+        let rv = await conv('./test/docin.docx', fpOut, { execFontGrow: 1 })
+
+        //規格④: 成功時回傳值與輸出內容照舊
+        assert.strict.deepEqual([rv.r, rv.err], ['ok', null])
+        assert.strict.equal(fs.readFileSync(fpOut, 'utf8') === fs.readFileSync('./test/docoutTrue.html', 'utf8'), true)
+        assert.strict.deepEqual([], await waitWordGone(newPids()))
+        assert.strict.deepEqual([], await watch.visibleSince(iw))
+    })
+
+})

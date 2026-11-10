@@ -50,6 +50,18 @@ test()
     })
 ```
 
+## Breaking changes
+
+### 轉換失敗改為 reject（下一版）
+
+- 舊版：`docx2html.exe` 內部失敗（如輸入非 docx、docx 損毀、Word 無法開啟或無法另存）時，只在 stdout 印 `error: …` 且離開碼為 0，`WDocx2html()` 仍 resolve `'ok'`，呼叫端無從得知失敗；`fpOut` 已有舊檔者還會讀到舊內容而不自知。
+- 新版：`WDocx2html()` 依 exe 輸出判定成敗，須有 `success` 行且無 `error:` 行才 resolve `'ok'`；`error:` 行（即使同時有 `success`）、空輸出、未知輸出一律以字串 reject，格式為 `[E_CONVERT_FAILED] 原因`，原因為 exe 輸出之診斷（已依系統字碼頁解碼，不回顯輸入與輸出路徑；但 Word 之診斷可能自行含檔名）。
+- exe 報成功後另驗輸出檔：`fpOut` 須存在且非空，否則以 `[E_CONVERT_FAILED] output file was not generated or is empty` reject。例如 `fpOut` 無副檔名時 Word 會另存為 `<fpOut>.htm`，舊版回 `'ok'`、新版 reject；請給 `.html` 或 `.htm` 副檔名。
+- 取不到執行檔：舊版 reject `ensureBins()` 拋出之 Error 物件（帶 `code`）；新版改為字串 `[code] 訊息`（如 `[E_OFFLINE_MISSING] …`），與 w-docx-split、w-html2docx 同型，本函數之 reject 一律為字串。
+- 其他 reject 型態不變：參數檢測失敗為說明字串；exe 無法執行或離開碼非 0 為 `code[N]:\n…` 字串。轉換成功時之回傳值 `'ok'` 與輸出內容不變。
+- 下游影響：原本以 `.then` 視為成功之呼叫端，遇上述失敗時改進 `.catch`；需區分失敗種類時以 `err.startsWith('[E_CONVERT_FAILED]')` 判斷。失敗時 `fpOut` 之內容不可採用（本套件不刪除 `fpOut` 既有之舊檔）。
+- `docx2html.exe` 本身未重建（離開碼仍恆為 0），判定只靠輸出。
+
 ## 外部執行檔
 
 本套件執行時需要下列外部執行檔，不含於 npm 包：
