@@ -223,17 +223,35 @@ describe(`ensureBins`, function() {
         assert.strict.equal(hits.length, 1)
     })
 
-    it(`should reject offline with E_OFFLINE_MISSING naming the file, sha256, size and the cache path when nothing is available (T6, O3)`, async function() {
+    it(`should reject offline with E_OFFLINE_MISSING when nothing is available: err.missing[] carries the name, sha256, size and the cache path, the message only names the file (T6, O3, V20)`, async function() {
         let cacheDir = newDir('cache')
         let err = await catchErr(() => ensureBins({ cacheDir, fetch: fetchBan, mirror: '', offline: true }))
         assert.strict.equal(err && err.code, 'E_OFFLINE_MISSING', err && err.message)
         let cachePath = path.join(cacheDir, sha256, name)
-        assert.strict.equal(err.message.includes(name), true, err.message)
-        assert.strict.equal(err.message.includes(sha256), true, err.message)
-        assert.strict.equal(err.message.includes(`${entry.size} bytes`), true, err.message)
-        assert.strict.equal(err.message.includes(cachePath), true, err.message)
-        assert.strict.equal(err.message.includes(`<W_BIN_MIRROR>/${pkgName}/${sha256}/${name}`), true, err.message)
+
+        //規格T6: 缺哪個檔、應放何處由結構欄位err.missing[]驗(原案以訊息內含sha256、大小、快取路徑驗)
         assert.strict.deepStrictEqual(err.missing.map((v) => [v.name, v.sha256, v.size, v.cachePath]), [[name, sha256, entry.size, cachePath]])
+        assert.strict.equal(err.missing[0].mirrorPath, null) //無鏡像時為null
+        assert.strict.equal(err.missing[0].bundle, null) //單一檔, 非檔案組
+
+        //規格V20: 訊息含檔名, 不含sha256、路徑與大小之值
+        assert.strict.equal(err.message.includes(name), true, err.message)
+        for (let s of [sha256, cachePath, cacheDir, `${entry.size}`]) {
+            assert.strict.equal(err.message.includes(s), false, `message should not include [${s}]: ${err.message}`)
+        }
+        assert.strict.equal(hits.length, 0)
+    })
+
+    it(`should name the mirror path in err.missing[].mirrorPath, not in the message, when a mirror is configured and offline (T6, O1, V20)`, async function() {
+        let cacheDir = newDir('cache')
+        let fdMirror = newDir('mirror-empty') //有設定但不含該檔之鏡像
+        let err = await catchErr(() => ensureBins({ cacheDir, fetch: fetchBan, mirror: fdMirror, offline: true }))
+        assert.strict.equal(err && err.code, 'E_OFFLINE_MISSING', err && err.message)
+        let fpMirror = path.join(fdMirror, pkgName, sha256, name)
+        assert.strict.deepStrictEqual(err.missing.map((v) => [v.name, v.sha256, v.size, v.cachePath, v.mirrorPath]), [[name, sha256, entry.size, path.join(cacheDir, sha256, name), fpMirror]])
+        for (let s of [fpMirror, fdMirror, sha256]) {
+            assert.strict.equal(err.message.includes(s), false, `message should not include [${s}]: ${err.message}`)
+        }
         assert.strict.equal(hits.length, 0)
     })
 
@@ -278,7 +296,13 @@ describe(`ensureBins`, function() {
             return catchErr(() => ensureBins({ fetch: fetchBan }))
         })
         assert.strict.equal(err && err.code, 'E_OFFLINE_MISSING', err && err.message)
-        assert.strict.equal(err.message.includes(path.join(fdCache2, pkgName, sha256, name)), true, err.message)
+        //應放之位置改由err.missing[]驗(規格T6、V20), 訊息只含檔名
+        let fpCache2 = path.join(fdCache2, pkgName, sha256, name)
+        assert.strict.deepStrictEqual(err.missing.map((v) => [v.name, v.sha256, v.size, v.cachePath]), [[name, sha256, entry.size, fpCache2]])
+        assert.strict.equal(err.message.includes(name), true, err.message)
+        for (let s of [fpCache2, fdCache2, sha256]) {
+            assert.strict.equal(err.message.includes(s), false, `message should not include [${s}]: ${err.message}`)
+        }
     })
 
     it(`should make WDocx2html reject a string "[E_OFFLINE_MISSING] ..." (not an Error object) when the executable is unavailable, like w-docx-split and w-html2docx (E3)`, async function() {
@@ -291,9 +315,23 @@ describe(`ensureBins`, function() {
         })
         assert.strict.equal(typeof err, 'string', String(err))
         assert.strict.equal(err.startsWith('[E_OFFLINE_MISSING] '), true, err)
-        for (let s of [name, sha256, `${entry.size} bytes`, path.join(fdCache3, pkgName, sha256, name)]) {
-            assert.strict.equal(err.includes(s), true, `message should include [${s}]: ${err}`)
+
+        //規格V20: 字串含檔名與固定說明(離線準備請呼叫ensureBins()並讀err.missing[]), 不含sha256、大小、快取位置與快取根
+        let cachePath3 = path.join(fdCache3, pkgName, sha256, name)
+        assert.strict.equal(err.includes(name), true, err)
+        assert.strict.equal(err.includes('ensureBins()'), true, err)
+        assert.strict.equal(err.includes('err.missing[]'), true, err)
+        for (let s of [sha256, `${entry.size}`, cachePath3, fdCache3]) {
+            assert.strict.equal(err.includes(s), false, `message should not include [${s}]: ${err}`)
         }
+
+        //應放之位置改由說明所指之途徑取得: 同環境下WDocx2html.ensureBins()之err.missing[](規格T6; 原案以字串內含sha256、大小、路徑驗)
+        let errBins = await withEnv({ W_BIN_CACHE: fdCache3, W_BIN_MIRROR: undefined, W_BIN_OFFLINE: '1' }, () => {
+            return catchErr(() => WDocx2html.ensureBins())
+        })
+        assert.strict.equal(errBins instanceof Error, true)
+        assert.strict.equal(errBins.code, 'E_OFFLINE_MISSING', errBins.message)
+        assert.strict.deepStrictEqual(errBins.missing.map((v) => [v.name, v.sha256, v.size, v.cachePath]), [[name, sha256, entry.size, cachePath3]])
         assert.strict.equal(fs.existsSync(fpOut), false)
         assert.strict.equal(hits.length, 0)
     })

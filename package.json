@@ -1,6 +1,6 @@
 {
   "name": "w-docx2html",
-  "version": "1.0.50",
+  "version": "1.0.51",
   "main": "dist/w-docx2html.umd.js",
   "dependencies": {
     "wsemi": "^1.9.64"

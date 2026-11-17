@@ -27,6 +27,7 @@
 
 - 現況: 已改制式規格(2026-10-28,主控任務 20261028054319,B 類→釘選模式): `bin/docx2html.exe`(主控已提交推送,提交 `924a7a516ef2ac01b6566e866b13383a2e8bc2d3`)＋`bin/manifest.json`(由 `toolg/genBinManifest.mjs` 產生)＋`src/ensureBins.mjs`(轉呼叫 wsemi `fsEnsureBins`,wsemi 1.9.27).`WDocx2html()` 經 `ensureBins({ names: 'docx2html.exe' })` 取得路徑;`WDocx2html.ensureBins` 與 `src/ensureBins.mjs` 供部署前預先取得;`autoDownloadFiles()` 保留為相容層.已移除 `postinstall`、`scripts/install.mjs`、`src/downloadFiles.mjs`(自寫之 `fsDownloadFile` 直連).
 - 舊版相容: `src/docx2html.exe` 保留於 repo(舊版自主幹下載),不入 npm 包.
+- 2026-11-18 更新(跟跑 wsemi 1.9.64,V20): 離線缺檔(`E_OFFLINE_MISSING`)之訊息不再含 sha256 與路徑,測試改驗 `err.missing[]` 欄位(並新增有鏡像時之 `mirrorPath` 案),`WDocx2html()` 之字串改為只含檔名與「呼叫 `ensureBins()` 讀 `err.missing[]`」之固定說明,README〈外部執行檔〉已補放置位置之讀法;`npm test` 53 passing / 0 failing(修前 49 passing + 3 failing).
 - 規則: `sgud/rule/rulebook.md` R-BIN-DOCX2HTML-01.
 - 測試: `test/unit-binManifest.test.mjs`、`test/unit-ensureBins.test.mjs`(本機 HTTP `127.0.0.1:8951`、不連外網;子行程工具 `test/tools/ensureBinsChild.mjs`).
 - 已知缺口與待辦: ①真實 GitHub 網址之下載未實測(測試不得連外網);②至舊版淘汰後移除 `src/docx2html.exe`(另案);③`dist/` 隨發布重新產製(`toolg/gDistRollup.mjs` 已增列 `url`、`crypto`、`stream`、`stream/promises` 為 external/globals;以該設定建置到暫存夾並模擬安裝實測: `import.meta.url` 於 UMD 可用、`ensureBins` 靜態屬性可用、經 UMD 實際轉換之輸出等於 `test/docoutTrue.html`;repo 內 `dist/` 仍為舊版,待發布時產製).

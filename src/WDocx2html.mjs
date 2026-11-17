@@ -29,7 +29,7 @@ function isWindows() {
  * @param {String} fpOut 輸入轉出Html檔位置字串
  * @param {Object} [opt={}] 輸入設定物件，預設{}
  * @param {Integer} [opt.execFontGrow=0] 輸入全文件放大字型次數整數，預設0
- * @returns {Promise} 回傳Promise，resolve回傳成功訊息'ok'，reject回傳錯誤訊息。reject值有下列型態：參數檢測失敗為說明字串；取不到執行檔為`[code] 訊息`字串(code取自ensureBins，如`[E_OFFLINE_MISSING] ...`)；docx2html.exe無法執行或離開碼非0為execProcess之訊息字串(如`code[N]:\n...`)；docx2html.exe執行後自報失敗(如輸入非docx、docx損毀、Word無法開啟或無法另存)為`[E_CONVERT_FAILED] 原因`，原因為exe輸出之診斷(已依系統字碼頁解碼，不回顯輸入與輸出路徑，但Word之診斷可能自行含檔名)；exe報成功而fpOut未產生或為空檔(如fpOut無副檔名，Word另存為`<fpOut>.htm`)亦為`[E_CONVERT_FAILED] output file was not generated or is empty`。docx2html.exe不論成敗離開碼皆為0，故以其輸出判定成敗：須有`success`行且無`error:`行才resolve，空輸出或未知輸出亦視為失敗；失敗(reject)時fpOut之內容不可採用，本套件不刪除fpOut既有之舊檔
+ * @returns {Promise} 回傳Promise，resolve回傳成功訊息'ok'，reject回傳錯誤訊息。reject值有下列型態：參數檢測失敗為說明字串；取不到執行檔為`[code] 訊息`字串(code取自ensureBins，如`[E_HASH_MISMATCH] ...`；離線缺檔為`[E_OFFLINE_MISSING] `加檔名與固定說明，字串不帶路徑與sha256，放置位置請呼叫`ensureBins()`自其錯誤之`err.missing[]`(`cachePath`、`mirrorPath`)取得)；docx2html.exe無法執行或離開碼非0為execProcess之訊息字串(如`code[N]:\n...`)；docx2html.exe執行後自報失敗(如輸入非docx、docx損毀、Word無法開啟或無法另存)為`[E_CONVERT_FAILED] 原因`，原因為exe輸出之診斷(已依系統字碼頁解碼，不回顯輸入與輸出路徑，但Word之診斷可能自行含檔名)；exe報成功而fpOut未產生或為空檔(如fpOut無副檔名，Word另存為`<fpOut>.htm`)亦為`[E_CONVERT_FAILED] output file was not generated or is empty`。docx2html.exe不論成敗離開碼皆為0，故以其輸出判定成敗：須有`success`行且無`error:`行才resolve，空輸出或未知輸出亦視為失敗；失敗(reject)時fpOut之內容不可採用，本套件不刪除fpOut既有之舊檔
  * @example
  *
  * import w from 'wsemi'
@@ -94,6 +94,7 @@ async function WDocx2html(fpIn, fpOut, opt = {}) {
 
     //prog, 經ensureBins取得docx2html.exe: 依bin/manifest.json校驗, 首次使用時下載(或自鏡像取得), 之後自快取取得, 見README〈外部執行檔〉
     //本函數以字串reject(同w-docx-split、w-html2docx), 故將ensureBins帶code之Error轉為`[code] message`
+    //  訊息不帶路徑與sha256(規格V20): E_OFFLINE_MISSING時wsemi之訊息指向錯誤物件之missing欄位, 但字串無此欄位, 故改為只含檔名與固定說明(放置位置請呼叫ensureBins()自其err.missing[]之cachePath、mirrorPath取得); 其他錯誤碼沿用wsemi之訊息(其已不帶值與路徑)
     let prog = ''
     let errBin = null
     await ensureBins({ names: fnExe })
@@ -101,6 +102,14 @@ async function WDocx2html(fpIn, fpOut, opt = {}) {
             prog = r[fnExe]
         })
         .catch((err) => {
+            if (get(err, 'code') === 'E_OFFLINE_MISSING') {
+                let names = (Array.isArray(get(err, 'missing')) ? err.missing : []).map((v) => get(v, 'name')).filter((v) => isestr(v))
+                if (names.length === 0) {
+                    names = [fnExe]
+                }
+                errBin = `[E_OFFLINE_MISSING] offline: ${names.join(', ')} is not in the cache or the mirror; to get where to place it, call ensureBins() of this package and read the err.missing[] (cachePath, mirrorPath) of its E_OFFLINE_MISSING error`
+                return
+            }
             errBin = `${isestr(get(err, 'code')) ? `[${err.code}] ` : ''}${isestr(get(err, 'message')) ? err.message : String(err)}`
         })
     if (errBin) {
